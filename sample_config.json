@@ -1,3 +1,10 @@
 {
-    "webroot_path": "/home/ubuntu/gatoflow"
+    "project_name": "MY_PROJECT",
+    "s3_bucket": "MY_S3_BUCKET",
+    "webroot_path": "/home/ubuntu/public_html",
+    "mysql": {
+        "host": "localhost",
+        "db_name": "wordpress_db",
+        "user": "USER",
+        "password": "PASSWORD"
 }
