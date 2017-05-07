@@ -8,6 +8,8 @@ from datetime import datetime
 
 import boto3
 
+from expiry import ExpiryChecker
+
 
 BACKUP_FREQUENCIES = (
         'daily',
@@ -60,20 +62,39 @@ def create_snapshot(config):
     ]
 
 
-def upload(local_path, s3_bucket, s3_key_name):
+def _upload(local_path, s3_bucket, s3_key_name):
     s3 = boto3.client('s3')
     s3.upload_file(local_path, s3_bucket, s3_key_name)
+
+
+def upload_all(frequency, snapshot_files, config):
+    for local_path in snapshot_files:
+        s3_key_name = '{}/{}/{}'.format(config['project_name'], frequency, basename(local_path))
+        _upload(local_path, config['s3_bucket'], s3_key_name)
+
+        # TODO - rm files from /tmp (.tar.gz + .sql)
+
+
+def rotate_old_uploads(frequency, config):
+    bucket = boto3.resource('s3').Bucket(config['s3_bucket'])
+    prefix = '{}/{}'.format(config['project_name'], frequency)
+
+    expiry = ExpiryChecker(frequency, config['rotate'][frequency])
+    for s3obj in bucket.objects.filter(Prefix=prefix):
+        print("key: {}, mtime: {}".format(s3obj.key, s3obj.last_modified))
+        if expiry.is_expired(s3obj.last_modified):
+            print(" -> deleting object: s3://{}/{}".format(config['s3_bucket'], s3obj.key))
+            #s3obj.delete()
+
 
 
 def main(frequency, config_file):
     config = json.load(open(config_file))
     snapshot_files = create_snapshot(config)
 
-    for local_path in snapshot_files:
-        s3_key_name = '{}/{}/{}'.format(config['project_name'], frequency, basename(local_path))
-        upload(local_path, config['s3_bucket'], s3_key_name)
+    upload_all(frequency, snapshot_files, config)
 
-    # TODO - rm files from /tmp (.tar.gz + .sql)
+    rotate_old_uploads(frequency, config)
 
 
 if __name__ == '__main__':
