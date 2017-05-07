@@ -69,13 +69,16 @@ def _upload(local_path, s3_bucket, s3_key_name):
 
 
 def upload_all(frequency, snapshot_files, config):
-    for local_path in snapshot_files:
-        s3_key_name = '{}/{}/{}'.format(config['project_name'], frequency, basename(local_path))
-        _upload(local_path, config['s3_bucket'], s3_key_name)
+    try:
+        # First, upload each file.
+        for local_path in snapshot_files:
+            s3_key_name = '{}/{}/{}'.format(config['project_name'], frequency, basename(local_path))
+            _upload(local_path, config['s3_bucket'], s3_key_name)
 
-    # Upload all files before deleting any.
-    for local_path in snapshot_files:
-        unlink(local_path)
+    finally:
+        # Clean up all temp files, regardless of whether the uploads succeeded.
+        for local_path in snapshot_files:
+            unlink(local_path)
 
 
 def rotate_old_uploads(frequency, config):
@@ -93,9 +96,7 @@ def rotate_old_uploads(frequency, config):
 def main(frequency, config_file):
     config = json.load(open(config_file))
     snapshot_files = create_snapshot(config)
-
     upload_all(frequency, snapshot_files, config)
-
     rotate_old_uploads(frequency, config)
 
 
