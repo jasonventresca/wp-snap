@@ -16,23 +16,49 @@ BACKUP_FREQUENCIES = (
 )
 
 
+def _fname_timestamp():
+    return str(datetime.utcnow()).replace(' ', '_')
+
+
 def tarball(webroot_path, project_name):
-    timestamp = str(datetime.utcnow()).replace(' ', '_')
-    tar_file = '/tmp/{}_{}.tar'.format(project_name, timestamp)
-    tar_gz_file = '{}.gz'.format(tar_file)
+    timestamp = _fname_timestamp()
+    tar_fname = '/tmp/{}_{}.tar'.format(project_name, timestamp)
+    tar_gz_fname = '{}.gz'.format(tar_fname)
 
-    check_call(['tar', '-cf', tar_file, webroot_path])
-    check_call(['gzip', '-f', tar_file])
+    check_call(['tar', '-cf', tar_fname, webroot_path])
+    check_call(['gzip', '-f', tar_fname])
 
-    return tar_gz_file
+    return tar_gz_fname
+
+
+def sql_dump(config):
+    db_config = config['mysql']
+    cmd = [
+            'mysqldump',
+            "-u'{}'".format(db_config['user']),
+            "-p'{}'".format(db_config['password']),
+            '-h', db_config['host'],
+            db_config['db_name'],
+    ]
+
+    timestamp = _fname_timestamp()
+    sql_fname = '/tmp/{}_{}.sql'.format(config['project_name'], timestamp)
+    print(" ".join(cmd))
+    with open(sql_fname, 'w') as sql_f:
+        check_call(" ".join(cmd), stdout=sql_f, shell=True)
+
+    check_call(['gzip', '-f', sql_fname])
+
+    return '{}.gz'.format(sql_fname)
 
 
 def create_snapshot(config):
-    tarball_file = tarball(config['webroot_path'], config['project_name'])
+    sqldump_fname = sql_dump(config)
+    tarball_fname = tarball(config['webroot_path'], config['project_name'])
 
     return [
-            tarball_file,
-            # TODO - sql dump filename goes here
+            sqldump_fname,
+            tarball_fname,
     ]
 
 

@@ -7,4 +7,5 @@
         "db_name": "wordpress_db",
         "user": "USER",
         "password": "PASSWORD"
+    }
 }
