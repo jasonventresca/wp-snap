@@ -35,17 +35,15 @@ def sql_dump(config):
     db_config = config['mysql']
     cmd = [
             'mysqldump',
-            "-u'{}'".format(db_config['user']),
-            "-p'{}'".format(db_config['password']),
-            '-h', db_config['host'],
+            "--user={}".format(db_config['user']),
+            "--password={}".format(db_config['password']),
+            '--host={}'.format(db_config['host']),
             db_config['db_name'],
     ]
-
     timestamp = _fname_timestamp()
     sql_fname = '/tmp/{}_{}.sql'.format(config['project_name'], timestamp)
-    print(" ".join(cmd))
     with open(sql_fname, 'w') as sql_f:
-        check_call(" ".join(cmd), stdout=sql_f, shell=True)
+        check_call(cmd, stdout=sql_f)
 
     check_call(['gzip', '-f', sql_fname])
 
