@@ -19,22 +19,22 @@ BACKUP_FREQUENCIES = (
 )
 
 
-def _fname_timestamp():
-    return str(datetime.utcnow()).replace(' ', '_')
+def _fname(project_name, extension):
+    timestamp = str(datetime.utcnow()).replace(' ', '_').replace(':', '-')
+    return '/tmp/{}_{}.{}'.format(project_name, timestamp, extension)
 
 
-def tarball(webroot_path, project_name):
-    timestamp = _fname_timestamp()
-    tar_fname = '/tmp/{}_{}.tar'.format(project_name, timestamp)
+def tarball(webroot_path, tar_fname):
+    check_call(['sudo', 'tar', '-cf', tar_fname, webroot_path])
+    check_call(['sudo', 'gzip', '-f', tar_fname])
+
     tar_gz_fname = '{}.gz'.format(tar_fname)
-
-    check_call(['tar', '-cf', tar_fname, webroot_path])
-    check_call(['gzip', '-f', tar_fname])
+    check_call(['sudo', 'chown', 'ubuntu:ubuntu', tar_gz_fname])
 
     return tar_gz_fname
 
 
-def sql_dump(config):
+def sql_dump(config, sql_fname):
     db_config = config['mysql']
     cmd = [
             'mysqldump',
@@ -43,8 +43,6 @@ def sql_dump(config):
             '--host={}'.format(db_config['host']),
             db_config['db_name'],
     ]
-    timestamp = _fname_timestamp()
-    sql_fname = '/tmp/{}_{}.sql'.format(config['project_name'], timestamp)
     with open(sql_fname, 'w') as sql_f:
         check_call(cmd, stdout=sql_f)
 
@@ -53,13 +51,13 @@ def sql_dump(config):
     return '{}.gz'.format(sql_fname)
 
 
-def create_snapshot(config):
-    sqldump_fname = sql_dump(config)
-    tarball_fname = tarball(config['webroot_path'], config['project_name'])
+def create_snapshot(config, sql_fname, tar_fname):
+    sql_gz_fname = sql_dump(config, sql_fname)
+    tar_gz_fname = tarball(config['webroot_path'], tar_fname)
 
     return [
-            sqldump_fname,
-            tarball_fname,
+            sql_gz_fname,
+            tar_gz_fname,
     ]
 
 
@@ -69,16 +67,9 @@ def _upload(local_path, s3_bucket, s3_key_name):
 
 
 def upload_all(frequency, snapshot_files, config):
-    try:
-        # First, upload each file.
-        for local_path in snapshot_files:
-            s3_key_name = '{}/{}/{}'.format(config['project_name'], frequency, basename(local_path))
-            _upload(local_path, config['s3_bucket'], s3_key_name)
-
-    finally:
-        # Clean up all temp files, regardless of whether the uploads succeeded.
-        for local_path in snapshot_files:
-            unlink(local_path)
+    for local_path in snapshot_files:
+        s3_key_name = '{}/{}/{}'.format(config['project_name'], frequency, basename(local_path))
+        _upload(local_path, config['s3_bucket'], s3_key_name)
 
 
 def rotate_old_uploads(frequency, config):
@@ -95,9 +86,25 @@ def rotate_old_uploads(frequency, config):
 
 def main(frequency, config_file):
     config = json.load(open(config_file))
-    snapshot_files = create_snapshot(config)
-    upload_all(frequency, snapshot_files, config)
-    rotate_old_uploads(frequency, config)
+
+    sql_fname = _fname(config['project_name'], 'sql')
+    tar_fname = _fname(config['project_name'], 'tar')
+    gz_files = (
+            sql_fname + '.gz',
+            tar_fname + '.gz',
+    )
+
+    try:
+        snapshot_files = create_snapshot(config=config, sql_fname=sql_fname, tar_fname=tar_fname)
+        upload_all(frequency, snapshot_files, config)
+        rotate_old_uploads(frequency, config)
+        assert set(gz_files) == set(snapshot_files)
+
+    finally:
+        # Clean up all temp files, regardless of whether the uploads succeeded.
+        all_possible_files = (sql_fname, tar_fname) + gz_files
+        for fname in all_possible_files:
+            check_call(['sudo', 'rm', '-rf', fname])
 
 
 if __name__ == '__main__':
